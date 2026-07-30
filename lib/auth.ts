@@ -32,7 +32,11 @@ export async function requireAdmin(request: Request) {
   return Response.json({ error: "관리자 인증이 필요합니다." }, { status: 401 });
 }
 
-export function adminPasswordMatches(value: string) {
-  const configured = getEnv().ADMIN_PASSWORD || "6085";
+export function adminPasswordMatches(value: string, request: Request) {
+  const configuredSecret = getEnv().ADMIN_PASSWORD;
+  const hostname = new URL(request.url).hostname;
+  const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
+  const configured = configuredSecret || (isLocal ? "6085" : "");
+  if (!configured) return false;
   return value === configured;
 }

@@ -23,6 +23,8 @@ test("ships production assets and no disposable starter", async () => {
   await access(new URL("../public/og.png", import.meta.url));
   assert.match(layout, /openGraph/);
   assert.match(dashboard, /연결되지 않은 소스는 결과를 만들지 않습니다/);
+  const auth = await readFile(new URL("../lib/auth.ts", import.meta.url), "utf8");
+  assert.match(auth, /isLocal \? "6085" : ""/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));
 });
