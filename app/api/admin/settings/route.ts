@@ -1,23 +1,27 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { requireAdmin } from "../../../../lib/auth";
+import { requireAdmin, requireSameOrigin } from "../../../../lib/auth";
 import { apiError, getD1, getEnv } from "../../../../lib/db";
+import { getOpenAIKeyStatus, saveOpenAIKey } from "../../../../lib/secrets";
 
 export async function GET(request: Request) {
   const denied = await requireAdmin(request);
   if (denied) return denied;
   try {
     const db = getD1();
-    const [agencies, profile, settings] = await Promise.all([
+    const [agencies, profile, settings, openaiStatus] = await Promise.all([
       db.prepare("SELECT * FROM agencies ORDER BY is_active DESC, name").all(),
       db.prepare("SELECT * FROM business_profiles ORDER BY id DESC LIMIT 1").first(),
       db.prepare("SELECT key,value_json,updated_at FROM app_settings WHERE key NOT LIKE '%api_key%'").all(),
+      getOpenAIKeyStatus(),
     ]);
     return Response.json({
       agencies: agencies.results,
       profile,
       settings: settings.results,
       secrets: {
-        openai: Boolean(getEnv().OPENAI_API_KEY),
+        openai: openaiStatus.configured,
+        openaiSource: openaiStatus.source,
+        openaiMasked: openaiStatus.masked,
         dataGoKr: Boolean(getEnv().DATA_GO_KR_SERVICE_KEY),
         bizinfo: Boolean(getEnv().BIZINFO_API_KEY),
       },
@@ -33,12 +37,20 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const wrongOrigin = requireSameOrigin(request);
+  if (wrongOrigin) return wrongOrigin;
   const denied = await requireAdmin(request);
   if (denied) return denied;
   try {
     const body = await request.json() as Record<string, any>;
     const db = getD1();
-    if (body.type === "profile") {
+    if (body.type === "openai_key") {
+      const apiKey = String(body.apiKey || "").trim();
+      if (!apiKey.startsWith("sk-") || apiKey.length < 20 || apiKey.length > 512) {
+        return Response.json({ error: "유효한 OpenAI API 키를 입력해 주세요." }, { status: 400 });
+      }
+      await saveOpenAIKey(apiKey);
+    } else if (body.type === "profile") {
       await db.prepare(`
         INSERT INTO business_profiles
         (company_name,intro,technologies,services,achievements,strengths,target_markets,preferred_categories,excluded_categories,budget_range,service_regions)

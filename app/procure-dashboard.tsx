@@ -292,6 +292,17 @@ function AdminModal({ close, connections, onSaved }: { close: () => void; connec
   const [profile, setProfile] = useState<Record<string, string>>({});
   const [models, setModels] = useState({ summary: "gpt-5.6-luna", relevance: "gpt-5.6-terra", attachment: "gpt-5.6-terra", classification: "gpt-5.6-luna" });
   const [agency, setAgency] = useState({ name: "", agencyType: "시청", region: "전국", homepageUrl: "", sourceType: "api" });
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
+  const [apiWorking, setApiWorking] = useState(false);
+
+  async function refreshAdminSettings() {
+    const settings = await fetch("/api/admin/settings");
+    const payload = await settings.json() as Row;
+    if (!settings.ok) throw new Error(payload.error || "관리자 설정을 불러오지 못했습니다.");
+    setAdmin(payload);
+    return payload;
+  }
 
   async function login(e: FormEvent) {
     e.preventDefault();
@@ -299,9 +310,7 @@ function AdminModal({ close, connections, onSaved }: { close: () => void; connec
     const json = await response.json() as Row;
     if (!response.ok) return setFeedback(json.error);
     setAuthenticated(true);
-    const settings = await fetch("/api/admin/settings");
-    const payload = await settings.json() as Row;
-    setAdmin(payload);
+    const payload = await refreshAdminSettings();
     if (payload.profile) setProfile({ companyName: payload.profile.company_name || "", intro: payload.profile.intro || "", technologies: payload.profile.technologies || "", services: payload.profile.services || "", achievements: payload.profile.achievements || "", strengths: payload.profile.strengths || "", targetMarkets: payload.profile.target_markets || "", preferredCategories: payload.profile.preferred_categories || "", excludedCategories: payload.profile.excluded_categories || "", budgetRange: payload.profile.budget_range || "", serviceRegions: payload.profile.service_regions || "" });
   }
 
@@ -313,9 +322,34 @@ function AdminModal({ close, connections, onSaved }: { close: () => void; connec
   }
 
   async function testAI() {
+    setApiWorking(true);
+    setFeedback("OpenAI 연결을 확인하고 있습니다…");
     const response = await fetch("/api/ai/health", { method: "POST" });
     const json = await response.json() as Row;
     setFeedback(json.message || json.error);
+    setApiWorking(false);
+  }
+
+  async function saveOpenAIKey() {
+    if (!openaiKey.trim()) return setFeedback("OpenAI API 키를 입력해 주세요.");
+    setApiWorking(true);
+    setFeedback("API 키를 암호화해 저장하고 있습니다…");
+    const response = await fetch("/api/admin/settings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "openai_key", apiKey: openaiKey }),
+    });
+    const json = await response.json() as Row;
+    if (!response.ok) {
+      setFeedback(json.error);
+      setApiWorking(false);
+      return;
+    }
+    setOpenaiKey("");
+    await refreshAdminSettings();
+    await onSaved();
+    setFeedback("API 키가 서버에 암호화 저장되었습니다. ‘연결 테스트’를 눌러 확인하세요.");
+    setApiWorking(false);
   }
 
   return <div className="modal-backdrop" onMouseDown={(e) => { if (e.currentTarget === e.target) close(); }}>
@@ -328,7 +362,21 @@ function AdminModal({ close, connections, onSaved }: { close: () => void; connec
           <div className="admin-head"><div><span className="kicker">ADMIN CONSOLE</span><h2>{tab === "profile" ? "내 사업 프로필" : tab === "sources" ? "수집 기관 관리" : tab === "ai" ? "AI 연결 및 모델" : "시스템 상태"}</h2></div><span className="admin-status"><i /> 관리자 모드</span></div>
           {tab === "profile" && <div className="admin-form"><p>AI 적합도 분석의 기준이 되는 실제 회사 정보를 입력하세요.</p><div className="form-grid">{Object.entries({ companyName: "회사명", intro: "사업 소개", technologies: "보유 기술", services: "주요 서비스", achievements: "주요 실적", strengths: "강점", targetMarkets: "목표 시장", preferredCategories: "우선 분야", excludedCategories: "제외 분야", budgetRange: "대응 예산", serviceRegions: "활동 지역" }).map(([key, label]) => <label key={key} className={key === "intro" || key === "achievements" ? "wide" : ""}>{label}{key === "intro" || key === "achievements" ? <textarea value={profile[key] || ""} onChange={(e) => setProfile({ ...profile, [key]: e.target.value })} /> : <input value={profile[key] || ""} onChange={(e) => setProfile({ ...profile, [key]: e.target.value })} />}</label>)}</div><button className="primary-button" onClick={() => save({ type: "profile", ...profile })}>사업 프로필 저장</button></div>}
           {tab === "sources" && <div className="admin-form"><div className="source-status"><Connection on={connections?.g2b} label="나라장터 API" /><Connection on={connections?.bizinfo} label="기업마당 API" /></div><p>서비스키는 배포 환경변수에 저장합니다. 화면이나 D1에 평문으로 노출하지 않습니다.</p><div className="form-grid"><label>기관명<input value={agency.name} onChange={(e) => setAgency({ ...agency, name: e.target.value })} /></label><label>기관 유형<select value={agency.agencyType} onChange={(e) => setAgency({ ...agency, agencyType: e.target.value })}>{agencyTypes.slice(1).map((v) => <option key={v}>{v}</option>)}</select></label><label>지역<select value={agency.region} onChange={(e) => setAgency({ ...agency, region: e.target.value })}>{regions.map((v) => <option key={v}>{v}</option>)}</select></label><label>수집 방식<select value={agency.sourceType} onChange={(e) => setAgency({ ...agency, sourceType: e.target.value })}><option value="api">공식 API</option><option value="scrape">HTML 커넥터</option></select></label><label className="wide">홈페이지·엔드포인트<input value={agency.homepageUrl} onChange={(e) => setAgency({ ...agency, homepageUrl: e.target.value })} /></label></div><button className="primary-button" onClick={() => save({ type: "agency", ...agency })}>기관 추가</button><div className="agency-list">{(admin?.agencies || []).map((item: Row) => <div key={item.id}><span><b>{item.name}</b><small>{item.type} · {item.region_sido}</small></span><em>{item.is_active ? "활성" : "비활성"}</em></div>)}</div></div>}
-          {tab === "ai" && <div className="admin-form"><div className="api-card"><div><span>OpenAI Responses API</span><strong>{connections?.openai ? "연결됨" : "환경변수 설정 필요"}</strong><small>키는 서버에서만 사용되며 브라우저로 반환되지 않습니다.</small></div><button onClick={testAI}>연결 테스트</button></div><div className="model-grid">{Object.entries({ summary: "공고 요약", relevance: "적합도 분석", attachment: "첨부문서 분석", classification: "키워드 분류" }).map(([key, label]) => <label key={key}>{label}<select value={models[key as keyof typeof models]} onChange={(e) => setModels({ ...models, [key]: e.target.value })}>{(admin?.models || []).map((model: Row) => <option key={model.id} value={model.id}>{model.id} · {model.label}</option>)}</select></label>)}</div><div className="model-notes">{(admin?.models || []).map((model: Row) => <div key={model.id}><b>{model.label}</b><span>{model.id}</span><small>{model.note}</small></div>)}</div><button className="primary-button" onClick={() => save({ type: "models", ...models })}>모델 설정 저장</button></div>}
+          {tab === "ai" && <div className="admin-form">
+            <div className="api-card">
+              <div><span>OpenAI Responses API</span><strong>{admin?.secrets?.openai ? "저장된 API 키 있음" : "API 키 미설정"}</strong><small>{admin?.secrets?.openaiMasked ? `${admin.secrets.openaiMasked} · ${admin.secrets.openaiSource === "environment" ? "Cloudflare 환경변수" : "서버 암호화 저장"}` : "키는 서버에서만 사용되며 브라우저로 반환되지 않습니다."}</small></div>
+              <span className={`api-status ${admin?.secrets?.openai ? "on" : ""}`}><i />{admin?.secrets?.openai ? "설정됨" : "미연결"}</span>
+            </div>
+            <section className="api-key-setup">
+              <div className="api-key-heading"><div><b>ChatGPT API 키 입력</b><small>OpenAI Platform에서 발급한 `sk-` 키를 입력하세요.</small></div><a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">API 키 발급 ↗</a></div>
+              <label className="api-key-input"><span>API KEY</span><div><input type={showOpenaiKey ? "text" : "password"} value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} placeholder="sk-••••••••••••••••••••" autoComplete="off" /><button type="button" onClick={() => setShowOpenaiKey(!showOpenaiKey)}>{showOpenaiKey ? "숨기기" : "보기"}</button></div></label>
+              <p>저장 시 AES-GCM으로 암호화되어 D1에 보관됩니다. 저장된 원문 키는 다시 화면에 표시되지 않습니다.</p>
+              <div className="api-actions"><button className="primary-button" onClick={saveOpenAIKey} disabled={apiWorking || !openaiKey.trim()}>{apiWorking ? "처리 중…" : "API 키 저장"}</button><button className="secondary-button" onClick={testAI} disabled={apiWorking || !admin?.secrets?.openai}>연결 테스트</button></div>
+            </section>
+            <div className="model-grid">{Object.entries({ summary: "공고 요약", relevance: "적합도 분석", attachment: "첨부문서 분석", classification: "키워드 분류" }).map(([key, label]) => <label key={key}>{label}<select value={models[key as keyof typeof models]} onChange={(e) => setModels({ ...models, [key]: e.target.value })}>{(admin?.models || []).map((model: Row) => <option key={model.id} value={model.id}>{model.id} · {model.label}</option>)}</select></label>)}</div>
+            <div className="model-notes">{(admin?.models || []).map((model: Row) => <div key={model.id}><b>{model.label}</b><span>{model.id}</span><small>{model.note}</small></div>)}</div>
+            <button className="primary-button" onClick={() => save({ type: "models", ...models })}>모델 설정 저장</button>
+          </div>}
           {tab === "system" && <div className="system-grid"><div><span>D1 데이터베이스</span><strong>연결됨</strong><small>공고·로그·분석·메모 영구 저장</small></div><div><span>저장된 공고</span><strong>{admin?.stats?.total || "대시보드 확인"}</strong><small>중복키 기반 버전 갱신</small></div><div><span>첨부 저장소</span><strong>확장 대기</strong><small>R2 바인딩 추가 시 원본 저장</small></div><div><span>보안 상태</span><strong>환경변수 권장</strong><small>ADMIN_PASSWORD·APP_ENCRYPTION_KEY</small></div></div>}
           {feedback && <p className="inline-feedback">{feedback}</p>}
         </section>

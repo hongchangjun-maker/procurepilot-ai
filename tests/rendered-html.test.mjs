@@ -23,8 +23,17 @@ test("ships production assets and no disposable starter", async () => {
   await access(new URL("../public/og.png", import.meta.url));
   assert.match(layout, /openGraph/);
   assert.match(dashboard, /연결되지 않은 소스는 결과를 만들지 않습니다/);
+  assert.match(dashboard, /ChatGPT API 키 입력/);
+  assert.match(dashboard, /API 키 저장/);
+  assert.match(dashboard, /연결 테스트/);
   const auth = await readFile(new URL("../lib/auth.ts", import.meta.url), "utf8");
+  const secrets = await readFile(new URL("../lib/secrets.ts", import.meta.url), "utf8");
+  const settingsRoute = await readFile(new URL("../app/api/admin/settings/route.ts", import.meta.url), "utf8");
   assert.match(auth, /isLocal \? "6085" : ""/);
+  assert.match(secrets, /AES-GCM/);
+  assert.match(secrets, /openai_api_key_encrypted/);
+  assert.match(settingsRoute, /openaiMasked/);
+  assert.doesNotMatch(settingsRoute, /value_json:\s*openai/i);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));
 });

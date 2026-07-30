@@ -32,6 +32,13 @@ export async function requireAdmin(request: Request) {
   return Response.json({ error: "관리자 인증이 필요합니다." }, { status: 401 });
 }
 
+export function requireSameOrigin(request: Request) {
+  const origin = request.headers.get("origin");
+  if (!origin) return null;
+  if (origin === new URL(request.url).origin) return null;
+  return Response.json({ error: "허용되지 않은 요청 출처입니다." }, { status: 403 });
+}
+
 export function adminPasswordMatches(value: string, request: Request) {
   const configuredSecret = getEnv().ADMIN_PASSWORD;
   const hostname = new URL(request.url).hostname;

@@ -1,9 +1,10 @@
 import { apiError, getD1, getEnv } from "../../../lib/db";
+import { getOpenAIKeyStatus } from "../../../lib/secrets";
 
 export async function GET() {
   try {
     const db = getD1();
-    const [opportunities, logs, profile, stats] = await Promise.all([
+    const [opportunities, logs, profile, stats, openaiStatus] = await Promise.all([
       db.prepare(`
         SELECT o.*, a.summary_json, a.relevance_score, a.relevance_grade,
           a.relevance_reason, a.strengths, a.weaknesses, a.strategy, a.model_name,
@@ -23,6 +24,7 @@ export async function GET() {
           SUM(CASE WHEN status = '마감' OR (deadline_at != '' AND date(deadline_at) < date('now')) THEN 1 ELSE 0 END) closed
         FROM opportunities
       `).first(),
+      getOpenAIKeyStatus(),
     ]);
     return Response.json({
       opportunities: opportunities.results,
@@ -32,7 +34,7 @@ export async function GET() {
       connections: {
         g2b: Boolean(getEnv().DATA_GO_KR_SERVICE_KEY),
         bizinfo: Boolean(getEnv().BIZINFO_API_KEY),
-        openai: Boolean(getEnv().OPENAI_API_KEY),
+        openai: openaiStatus.configured,
       },
     });
   } catch (error) {

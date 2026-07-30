@@ -219,6 +219,24 @@ td > small { display: block; font-size: 8px; color: #98a2b3; margin-top: 5px; }
 .api-card strong { font-size: 13px; }
 .api-card small { color: #98a2b3; font-size: 8px; }
 .api-card button { border: 1px solid #cbd8e5; background: white; border-radius: 7px; padding: 8px 12px; color: var(--blue); font-size: 10px; }
+.api-status { display: flex; align-items: center; gap: 6px; color: #8b95a3; background: white; border: 1px solid #dce3ea; padding: 7px 10px; border-radius: 99px; font-size: 9px !important; font-weight: 700; white-space: nowrap; }
+.api-status i { width: 7px; height: 7px; border-radius: 50%; background: #aeb6c1; }
+.api-status.on { color: var(--green); border-color: #b9dfd2; background: #f0faf6; }
+.api-status.on i { background: var(--green); box-shadow: 0 0 0 3px #24856a18; }
+.api-key-setup { margin: 14px 0 20px; border: 1px solid #dfe6ed; border-radius: 10px; padding: 16px; background: #fff; }
+.api-key-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.api-key-heading div { display: flex; flex-direction: column; gap: 3px; }
+.api-key-heading b { font-size: 12px; color: #25364b; }
+.api-key-heading small { color: #8b96a5; font-size: 8px; }
+.api-key-heading a { color: var(--blue); font-size: 9px; text-decoration: none; white-space: nowrap; }
+.api-key-input > span { display: block; color: #667085; font-size: 8px; letter-spacing: .8px; font-weight: 800; margin-bottom: 5px; }
+.api-key-input > div { display: grid; grid-template-columns: 1fr auto; }
+.api-key-input input { border-radius: 7px 0 0 7px; font-family: var(--font-geist-mono), monospace; letter-spacing: .3px; }
+.api-key-input button { border: 1px solid #dce1e7; border-left: 0; background: #f7f8fa; color: #58687a; border-radius: 0 7px 7px 0; padding: 0 12px; font-size: 9px; }
+.api-key-setup > p { color: #7a8796; font-size: 8px; line-height: 1.5; margin: 8px 0 12px; }
+.api-actions { display: flex; gap: 8px; }
+.api-actions button { min-height: 36px; }
+.secondary-button { border: 1px solid #cbd8e5; background: white; color: var(--blue); border-radius: 8px; padding: 0 16px; font-weight: 700; font-size: 10px; }
 .model-notes, .system-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0 20px; }
 .model-notes div, .system-grid div { border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 3px; }
 .model-notes b { color: var(--blue); font-size: 10px; }

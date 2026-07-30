@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { apiError, getD1, getEnv } from "../../../../lib/db";
+import { getOpenAIKey } from "../../../../lib/secrets";
 
 const schema = {
   type: "object",
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
   try {
     const { opportunityId } = await request.json() as { opportunityId?: number };
     if (!opportunityId) return Response.json({ error: "공고를 선택해 주세요." }, { status: 400 });
-    const apiKey = getEnv().OPENAI_API_KEY;
+    const apiKey = await getOpenAIKey();
     if (!apiKey) return Response.json({ error: "OpenAI가 연결되지 않았습니다. 배포 환경에 OPENAI_API_KEY를 설정해 주세요." }, { status: 424 });
     const db = getD1();
     const opportunity = await db.prepare("SELECT * FROM opportunities WHERE id = ?").bind(opportunityId).first<Record<string, unknown>>();
