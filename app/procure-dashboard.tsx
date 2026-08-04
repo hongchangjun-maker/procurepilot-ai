@@ -10,7 +10,7 @@ type Dashboard = {
   logs: Row[];
   profile?: Row;
   stats: Row;
-  connections: { g2b: boolean; bizinfo: boolean; openai: boolean };
+  connections: { g2b: boolean; bizinfo: boolean; scraper: boolean; openai: boolean };
 };
 
 const categories = ["전체", "AI", "디지털", "소프트웨어", "교육", "콘텐츠", "VR / AR / XR", "메타버스", "상담 / 심리", "플랫폼 구축", "데이터", "기타"];
@@ -45,6 +45,9 @@ export default function ProcureDashboard() {
   const [region, setRegion] = useState("전국");
   const [category, setCategory] = useState("전체");
   const [agencyType, setAgencyType] = useState("전체");
+  const [noticeType, setNoticeType] = useState("전체");
+  const [minBudget, setMinBudget] = useState("");
+  const [maxBudget, setMaxBudget] = useState("");
   const [days, setDays] = useState(7);
   const [sort, setSort] = useState("deadline");
   const [collecting, setCollecting] = useState(false);
@@ -78,7 +81,10 @@ export default function ProcureDashboard() {
       return (!search || haystack.includes(search.toLowerCase()))
         && (region === "전국" || haystack.includes(region))
         && (category === "전체" || row.category === category)
-        && (agencyType === "전체" || (row.agency_name || "").includes(agencyType.replace("기타 ", "")));
+        && (agencyType === "전체" || row.agency_type === agencyType)
+        && (noticeType === "전체" || row.notice_type === noticeType)
+        && (!minBudget || row.budget === 0 || Number(row.budget) >= Number(minBudget))
+        && (!maxBudget || Number(row.budget) <= Number(maxBudget));
     });
     return [...filtered].sort((a, b) => {
       if (sort === "budget") return Number(b.budget) - Number(a.budget);
@@ -86,7 +92,7 @@ export default function ProcureDashboard() {
       if (sort === "latest") return String(b.published_at).localeCompare(String(a.published_at));
       return (a.deadline_at || "9999").localeCompare(b.deadline_at || "9999");
     });
-  }, [data, search, region, category, agencyType, sort]);
+  }, [data, search, region, category, agencyType, noticeType, minBudget, maxBudget, sort]);
 
   async function collect() {
     setCollecting(true);
@@ -95,7 +101,7 @@ export default function ProcureDashboard() {
       const response = await fetch("/api/collect", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ region, category, keyword: search, days }),
+        body: JSON.stringify({ region, category, agencyType, noticeType, keyword: search, days, minBudget, maxBudget }),
       });
       const json = await response.json() as Row;
       if (!response.ok) throw new Error(`${json.error}${json.sources ? ` · ${json.sources.map((s: Row) => `${s.source}: ${s.message}`).join(" / ")}` : ""}`);
@@ -138,6 +144,7 @@ export default function ProcureDashboard() {
         <div className="connection-strip">
           <Connection on={data?.connections.g2b} label="나라장터" />
           <Connection on={data?.connections.bizinfo} label="기업마당" />
+          <Connection on={data?.connections.scraper} label="공식 게시판" />
           <Connection on={data?.connections.openai} label="OpenAI" />
         </div>
       </section>
@@ -153,15 +160,15 @@ export default function ProcureDashboard() {
 
       <section className="workspace">
         <aside className="filters panel">
-          <div className="panel-heading"><div><span className="kicker">COLLECT</span><h2>수집 조건</h2></div><button className="icon-button" onClick={() => { setRegion("전국"); setCategory("전체"); setAgencyType("전체"); }}>↻</button></div>
+          <div className="panel-heading"><div><span className="kicker">COLLECT</span><h2>수집 조건</h2></div><button className="icon-button" aria-label="필터 초기화" onClick={() => { setRegion("전국"); setCategory("전체"); setAgencyType("전체"); setNoticeType("전체"); setMinBudget(""); setMaxBudget(""); }}>↻</button></div>
           <Field label="지역"><select value={region} onChange={(e) => setRegion(e.target.value)}>{regions.map((v) => <option key={v}>{v}</option>)}</select></Field>
           <Field label="기관 유형"><select value={agencyType} onChange={(e) => setAgencyType(e.target.value)}>{agencyTypes.map((v) => <option key={v}>{v}</option>)}</select></Field>
           <Field label="분야"><select value={category} onChange={(e) => setCategory(e.target.value)}>{categories.map((v) => <option key={v}>{v}</option>)}</select></Field>
-          <Field label="정보 유형"><select><option>전체</option><option>입찰공고</option><option>사전규격</option><option>발주계획</option><option>공모</option><option>지원사업</option></select></Field>
+          <Field label="정보 유형"><select value={noticeType} onChange={(e) => setNoticeType(e.target.value)}><option>전체</option><option>입찰공고</option><option>사전규격</option><option>발주계획</option><option>공모</option><option>지원사업</option></select></Field>
           <Field label="조회 기간"><div className="segmented">{[1, 7, 30].map((v) => <button key={v} className={days === v ? "active" : ""} onClick={() => setDays(v)}>{v === 1 ? "오늘" : `${v}일`}</button>)}</div></Field>
-          <Field label="예산 범위"><div className="budget-row"><input placeholder="최소" inputMode="numeric" /><span>—</span><input placeholder="최대" inputMode="numeric" /></div></Field>
+          <Field label="예산 범위(원)"><div className="budget-row"><input value={minBudget} onChange={(e) => setMinBudget(e.target.value.replace(/\D/g, ""))} placeholder="최소" inputMode="numeric" /><span>—</span><input value={maxBudget} onChange={(e) => setMaxBudget(e.target.value.replace(/\D/g, ""))} placeholder="최대" inputMode="numeric" /></div></Field>
           <button className="primary-button collect-button" onClick={collect} disabled={collecting}>{collecting ? "공식 소스 확인 중…" : "⌁  수집 시작"}</button>
-          <p className="helper">공식 API 인증키가 연결된 소스만 수집합니다. 연결되지 않은 소스는 결과를 만들지 않습니다.</p>
+          <p className="helper">공식 API와 관리자가 승인한 공공기관 게시판만 수집합니다. 연결되지 않은 소스는 결과를 만들지 않습니다.</p>
         </aside>
 
         <section className="list-panel panel">
@@ -186,7 +193,7 @@ export default function ProcureDashboard() {
                 ))}
               </tbody>
             </table>
-            {!loading && rows.length === 0 && <Empty onCollect={collect} connected={Boolean(data?.connections.g2b || data?.connections.bizinfo)} />}
+            {!loading && rows.length === 0 && <Empty onCollect={collect} connected={Boolean(data?.connections.g2b || data?.connections.bizinfo || data?.connections.scraper)} />}
             {loading && <div className="loading-state">저장된 공고를 불러오는 중입니다…</div>}
           </div>
         </section>
@@ -291,8 +298,13 @@ function AdminModal({ close, connections, onSaved }: { close: () => void; connec
   const [feedback, setFeedback] = useState("");
   const [profile, setProfile] = useState<Record<string, string>>({});
   const [models, setModels] = useState({ summary: "gpt-5.6-luna", relevance: "gpt-5.6-terra", attachment: "gpt-5.6-terra", classification: "gpt-5.6-luna" });
-  const [agency, setAgency] = useState({ name: "", agencyType: "시청", region: "전국", homepageUrl: "", sourceType: "api" });
+  const [agency, setAgency] = useState({
+    name: "", agencyType: "기타 공공기관", region: "전국", sourceType: "scrape",
+    url: "", rowSelector: "", titleSelector: "", linkSelector: "", publishedSelector: "",
+    deadlineSelector: "", agencySelector: "", idAttribute: "", idPattern: "", noticeType: "공모",
+  });
   const [openaiKey, setOpenaiKey] = useState("");
+  const [sourceKeys, setSourceKeys] = useState({ data_go_kr_service_key: "", bizinfo_api_key: "" });
   const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const [apiWorking, setApiWorking] = useState(false);
 
@@ -318,7 +330,54 @@ function AdminModal({ close, connections, onSaved }: { close: () => void; connec
     const response = await fetch("/api/admin/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
     const json = await response.json() as Row;
     setFeedback(response.ok ? "설정이 안전하게 저장되었습니다." : json.error);
-    if (response.ok) await onSaved();
+    if (response.ok) {
+      await refreshAdminSettings();
+      await onSaved();
+    }
+  }
+
+  async function saveSourceKey(name: "data_go_kr_service_key" | "bizinfo_api_key") {
+    const apiKey = sourceKeys[name].trim();
+    if (!apiKey) return setFeedback("서비스키를 입력해 주세요.");
+    setApiWorking(true);
+    const response = await fetch("/api/admin/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "source_key", name, apiKey }) });
+    const json = await response.json() as Row;
+    if (response.ok) {
+      setSourceKeys({ ...sourceKeys, [name]: "" });
+      await refreshAdminSettings();
+      await onSaved();
+    }
+    setFeedback(response.ok ? "서비스키가 서버에 암호화 저장되었습니다. 연결 테스트로 확인하세요." : json.error);
+    setApiWorking(false);
+  }
+
+  async function testSourceKey(name: "data_go_kr_service_key" | "bizinfo_api_key") {
+    setApiWorking(true);
+    const response = await fetch("/api/admin/sources/key-test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
+    const json = await response.json() as Row;
+    setFeedback(json.message || json.error);
+    setApiWorking(false);
+  }
+
+  function agencyPayload() {
+    return {
+      type: "agency", name: agency.name, agencyType: agency.agencyType, region: agency.region, sourceType: agency.sourceType,
+      sourceConfig: {
+        url: agency.url, rowSelector: agency.rowSelector, titleSelector: agency.titleSelector,
+        linkSelector: agency.linkSelector, publishedSelector: agency.publishedSelector,
+        deadlineSelector: agency.deadlineSelector, agencySelector: agency.agencySelector,
+        idAttribute: agency.idAttribute, idPattern: agency.idPattern, noticeType: agency.noticeType, maxItems: 30,
+      },
+    };
+  }
+
+  async function testScraper() {
+    setApiWorking(true);
+    setFeedback("공식 게시판 구조를 확인하고 있습니다…");
+    const response = await fetch("/api/admin/sources/test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(agencyPayload()) });
+    const json = await response.json() as Row;
+    setFeedback(response.ok ? `${json.message} · 예시: ${(json.samples || []).map((item: Row) => item.title).slice(0, 2).join(" / ")}` : json.error);
+    setApiWorking(false);
   }
 
   async function testAI() {
@@ -361,7 +420,38 @@ function AdminModal({ close, connections, onSaved }: { close: () => void; connec
         <section className="admin-body">
           <div className="admin-head"><div><span className="kicker">ADMIN CONSOLE</span><h2>{tab === "profile" ? "내 사업 프로필" : tab === "sources" ? "수집 기관 관리" : tab === "ai" ? "AI 연결 및 모델" : "시스템 상태"}</h2></div><span className="admin-status"><i /> 관리자 모드</span></div>
           {tab === "profile" && <div className="admin-form"><p>AI 적합도 분석의 기준이 되는 실제 회사 정보를 입력하세요.</p><div className="form-grid">{Object.entries({ companyName: "회사명", intro: "사업 소개", technologies: "보유 기술", services: "주요 서비스", achievements: "주요 실적", strengths: "강점", targetMarkets: "목표 시장", preferredCategories: "우선 분야", excludedCategories: "제외 분야", budgetRange: "대응 예산", serviceRegions: "활동 지역" }).map(([key, label]) => <label key={key} className={key === "intro" || key === "achievements" ? "wide" : ""}>{label}{key === "intro" || key === "achievements" ? <textarea value={profile[key] || ""} onChange={(e) => setProfile({ ...profile, [key]: e.target.value })} /> : <input value={profile[key] || ""} onChange={(e) => setProfile({ ...profile, [key]: e.target.value })} />}</label>)}</div><button className="primary-button" onClick={() => save({ type: "profile", ...profile })}>사업 프로필 저장</button></div>}
-          {tab === "sources" && <div className="admin-form"><div className="source-status"><Connection on={connections?.g2b} label="나라장터 API" /><Connection on={connections?.bizinfo} label="기업마당 API" /></div><p>서비스키는 배포 환경변수에 저장합니다. 화면이나 D1에 평문으로 노출하지 않습니다.</p><div className="form-grid"><label>기관명<input value={agency.name} onChange={(e) => setAgency({ ...agency, name: e.target.value })} /></label><label>기관 유형<select value={agency.agencyType} onChange={(e) => setAgency({ ...agency, agencyType: e.target.value })}>{agencyTypes.slice(1).map((v) => <option key={v}>{v}</option>)}</select></label><label>지역<select value={agency.region} onChange={(e) => setAgency({ ...agency, region: e.target.value })}>{regions.map((v) => <option key={v}>{v}</option>)}</select></label><label>수집 방식<select value={agency.sourceType} onChange={(e) => setAgency({ ...agency, sourceType: e.target.value })}><option value="api">공식 API</option><option value="scrape">HTML 커넥터</option></select></label><label className="wide">홈페이지·엔드포인트<input value={agency.homepageUrl} onChange={(e) => setAgency({ ...agency, homepageUrl: e.target.value })} /></label></div><button className="primary-button" onClick={() => save({ type: "agency", ...agency })}>기관 추가</button><div className="agency-list">{(admin?.agencies || []).map((item: Row) => <div key={item.id}><span><b>{item.name}</b><small>{item.type} · {item.region_sido}</small></span><em>{item.is_active ? "활성" : "비활성"}</em></div>)}</div></div>}
+          {tab === "sources" && <div className="admin-form">
+            <div className="source-status"><Connection on={connections?.g2b} label="나라장터 API" /><Connection on={connections?.bizinfo} label="기업마당 API" /><Connection on={connections?.scraper} label="공식 게시판" /></div>
+            <p>키는 서버에서 암호화 저장되며 화면에는 끝 4자리만 표시됩니다. HTML 수집은 공공기관 도메인만 허용합니다.</p>
+            <div className="source-key-grid">
+              {([
+                ["data_go_kr_service_key", "공공데이터포털 서비스키", admin?.secrets?.dataGoKr, admin?.secrets?.dataGoKrMasked],
+                ["bizinfo_api_key", "기업마당 인증키", admin?.secrets?.bizinfo, admin?.secrets?.bizinfoMasked],
+              ] as const).map(([name, label, configured, masked]) => <section className="source-key-card" key={name}>
+                <div><b>{label}</b><small>{configured ? `설정됨 ${masked || ""}` : "미설정"}</small></div>
+                <input type="password" autoComplete="off" value={sourceKeys[name]} onChange={(e) => setSourceKeys({ ...sourceKeys, [name]: e.target.value })} placeholder="서비스키 입력" />
+                <div className="api-actions"><button className="primary-button" disabled={apiWorking || !sourceKeys[name]} onClick={() => saveSourceKey(name)}>암호화 저장</button><button className="secondary-button" disabled={apiWorking || !configured} onClick={() => testSourceKey(name)}>연결 확인</button></div>
+              </section>)}
+            </div>
+            <h3 className="subheading">공공기관 게시판 추가</h3>
+            <div className="form-grid">
+              <label>기관명<input value={agency.name} onChange={(e) => setAgency({ ...agency, name: e.target.value })} placeholder="예: 중소벤처기업부" /></label>
+              <label>기관 유형<select value={agency.agencyType} onChange={(e) => setAgency({ ...agency, agencyType: e.target.value })}>{agencyTypes.slice(1).map((v) => <option key={v}>{v}</option>)}</select></label>
+              <label>지역<select value={agency.region} onChange={(e) => setAgency({ ...agency, region: e.target.value })}>{regions.map((v) => <option key={v}>{v}</option>)}</select></label>
+              <label>정보 유형<select value={agency.noticeType} onChange={(e) => setAgency({ ...agency, noticeType: e.target.value })}><option>공모</option><option>지원사업</option><option>입찰공고</option><option>사전규격</option><option>발주계획</option></select></label>
+              <label className="wide">목록 주소(HTTPS)<input value={agency.url} onChange={(e) => setAgency({ ...agency, url: e.target.value })} placeholder="https://기관.go.kr/..." /></label>
+              <label>행 선택자<input value={agency.rowSelector} onChange={(e) => setAgency({ ...agency, rowSelector: e.target.value })} placeholder="table tbody tr" /></label>
+              <label>제목 선택자<input value={agency.titleSelector} onChange={(e) => setAgency({ ...agency, titleSelector: e.target.value })} placeholder="td.subject a" /></label>
+              <label>원문 링크 선택자<input value={agency.linkSelector} onChange={(e) => setAgency({ ...agency, linkSelector: e.target.value })} placeholder="td.subject a" /></label>
+              <label>등록일 선택자<input value={agency.publishedSelector} onChange={(e) => setAgency({ ...agency, publishedSelector: e.target.value })} placeholder="td.date" /></label>
+              <label>마감일 선택자<input value={agency.deadlineSelector} onChange={(e) => setAgency({ ...agency, deadlineSelector: e.target.value })} placeholder="td.deadline" /></label>
+              <label>기관명 선택자<input value={agency.agencySelector} onChange={(e) => setAgency({ ...agency, agencySelector: e.target.value })} placeholder="선택 사항" /></label>
+              <label>공고 ID 속성<input value={agency.idAttribute} onChange={(e) => setAgency({ ...agency, idAttribute: e.target.value })} placeholder="예: data-id 또는 onclick" /></label>
+              <label>ID 추출 정규식<input value={agency.idPattern} onChange={(e) => setAgency({ ...agency, idPattern: e.target.value })} placeholder="첫 번째 괄호가 ID" /></label>
+            </div>
+            <div className="api-actions"><button className="secondary-button" disabled={apiWorking} onClick={testScraper}>저장 전 수집 테스트</button><button className="primary-button" disabled={apiWorking} onClick={() => save(agencyPayload())}>검증 후 기관 추가</button></div>
+            <div className="agency-list">{(admin?.agencies || []).map((item: Row) => <div key={item.id}><span><b>{item.name}</b><small>{item.source_type === "scrape" ? "HTML" : "API"} · {item.type} · {item.region_sido}</small></span><span className="agency-actions"><button onClick={() => save({ type: "agency_state", id: item.id, isActive: !item.is_active })}>{item.is_active ? "중지" : "활성"}</button><button className="danger-link" onClick={() => save({ type: "agency_delete", id: item.id })}>삭제</button></span></div>)}</div>
+          </div>}
           {tab === "ai" && <div className="admin-form">
             <div className="api-card">
               <div><span>OpenAI Responses API</span><strong>{admin?.secrets?.openai ? "저장된 API 키 있음" : "API 키 미설정"}</strong><small>{admin?.secrets?.openaiMasked ? `${admin.secrets.openaiMasked} · ${admin.secrets.openaiSource === "environment" ? "Cloudflare 환경변수" : "서버 암호화 저장"}` : "키는 서버에서만 사용되며 브라우저로 반환되지 않습니다."}</small></div>

@@ -37,3 +37,24 @@ test("ships production assets and no disposable starter", async () => {
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));
 });
+
+test("connects real public sources without fabricating collection results", async () => {
+  const [dashboard, connectors, collectRoute, settingsRoute, migration] = await Promise.all([
+    readFile(new URL("../app/procure-dashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/connectors.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/collect/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/settings/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../drizzle/0001_bumpy_iceman.sql", import.meta.url), "utf8"),
+  ]);
+  assert.match(dashboard, /정보 유형/);
+  assert.match(dashboard, /예산 범위\(원\)/);
+  assert.match(dashboard, /저장 전 수집 테스트/);
+  assert.match(connectors, /validateOfficialUrl/);
+  assert.match(connectors, /\.go\.kr, \.or\.kr, \.ac\.kr/);
+  assert.match(connectors, /HTMLRewriter/);
+  assert.match(collectRoute, /Promise\.allSettled/);
+  assert.match(collectRoute, /sourceNew/);
+  assert.match(settingsRoute, /savePublicDataKey/);
+  assert.match(migration, /mss\.go\.kr/);
+  assert.doesNotMatch(connectors, /items:\s*\[\s*\{/);
+});

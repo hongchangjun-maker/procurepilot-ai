@@ -51,21 +51,31 @@ export async function decryptSecret(payload: string) {
 }
 
 export async function saveOpenAIKey(apiKey: string) {
-  const encrypted = await encryptSecret(apiKey);
+  return saveEncryptedSetting("openai_api_key_encrypted", apiKey);
+}
+
+type SecretName = "data_go_kr_service_key" | "bizinfo_api_key";
+
+async function saveEncryptedSetting(name: `${string}_encrypted`, value: string) {
+  const encrypted = await encryptSecret(value);
   await getD1().prepare(`
-    INSERT INTO app_settings (key,value_json) VALUES ('openai_api_key_encrypted',?)
+    INSERT INTO app_settings (key,value_json) VALUES (?,?)
     ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP
-  `).bind(encrypted).run();
+  `).bind(name, encrypted).run();
+}
+
+async function getEncryptedSetting(name: `${string}_encrypted`) {
+  const row = await getD1().prepare(
+    "SELECT value_json FROM app_settings WHERE key=?",
+  ).bind(name).first<{ value_json: string }>();
+  if (!row?.value_json) return null;
+  return decryptSecret(row.value_json);
 }
 
 export async function getOpenAIKey() {
   const environmentKey = getEnv().OPENAI_API_KEY?.trim();
   if (environmentKey) return environmentKey;
-  const row = await getD1().prepare(
-    "SELECT value_json FROM app_settings WHERE key='openai_api_key_encrypted'",
-  ).first<{ value_json: string }>();
-  if (!row?.value_json) return null;
-  return decryptSecret(row.value_json);
+  return getEncryptedSetting("openai_api_key_encrypted");
 }
 
 export async function getOpenAIKeyStatus() {
@@ -75,6 +85,33 @@ export async function getOpenAIKeyStatus() {
   }
   try {
     const storedKey = await getOpenAIKey();
+    return storedKey
+      ? { configured: true, source: "encrypted_d1", masked: `••••${storedKey.slice(-4)}` }
+      : { configured: false, source: "none", masked: "" };
+  } catch {
+    return { configured: false, source: "unreadable", masked: "" };
+  }
+}
+
+export async function savePublicDataKey(name: SecretName, apiKey: string) {
+  return saveEncryptedSetting(`${name}_encrypted`, apiKey);
+}
+
+export async function getPublicDataKey(name: SecretName) {
+  const environmentKey = name === "data_go_kr_service_key"
+    ? getEnv().DATA_GO_KR_SERVICE_KEY?.trim()
+    : getEnv().BIZINFO_API_KEY?.trim();
+  if (environmentKey) return environmentKey;
+  return getEncryptedSetting(`${name}_encrypted`);
+}
+
+export async function getPublicDataKeyStatus(name: SecretName) {
+  const environmentKey = name === "data_go_kr_service_key"
+    ? getEnv().DATA_GO_KR_SERVICE_KEY?.trim()
+    : getEnv().BIZINFO_API_KEY?.trim();
+  if (environmentKey) return { configured: true, source: "environment", masked: `••••${environmentKey.slice(-4)}` };
+  try {
+    const storedKey = await getPublicDataKey(name);
     return storedKey
       ? { configured: true, source: "encrypted_d1", masked: `••••${storedKey.slice(-4)}` }
       : { configured: false, source: "none", masked: "" };

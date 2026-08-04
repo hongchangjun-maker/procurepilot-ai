@@ -25,6 +25,7 @@ export const opportunities = sqliteTable("opportunities", {
   sourceNoticeId: text("source_notice_id").notNull(),
   title: text("title").notNull(),
   agencyName: text("agency_name").notNull(),
+  agencyType: text("agency_type").notNull().default("기타 공공기관"),
   regionSido: text("region_sido").notNull().default("전국"),
   regionSigungu: text("region_sigungu").notNull().default(""),
   category: text("category").notNull().default("기타"),
@@ -43,6 +44,7 @@ export const opportunities = sqliteTable("opportunities", {
   uniqueIndex("opportunities_duplicate_key_idx").on(table.duplicateKey),
   index("opportunities_deadline_idx").on(table.deadlineAt),
   index("opportunities_agency_idx").on(table.agencyName),
+  index("opportunities_agency_type_idx").on(table.agencyType),
 ]);
 
 export const attachments = sqliteTable("attachments", {

@@ -1,18 +1,22 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { requireAdmin, requireSameOrigin } from "../../../../lib/auth";
-import { apiError, getD1, getEnv } from "../../../../lib/db";
-import { getOpenAIKeyStatus, saveOpenAIKey } from "../../../../lib/secrets";
+import { apiError, getD1 } from "../../../../lib/db";
+import { validateScrapeConfig } from "../../../../lib/connectors";
+import { getOpenAIKeyStatus, getPublicDataKeyStatus, saveOpenAIKey, savePublicDataKey } from "../../../../lib/secrets";
 
 export async function GET(request: Request) {
   const denied = await requireAdmin(request);
   if (denied) return denied;
   try {
     const db = getD1();
-    const [agencies, profile, settings, openaiStatus] = await Promise.all([
+    const [agencies, profile, settings, openaiStatus, dataGoStatus, bizinfoStatus, stats] = await Promise.all([
       db.prepare("SELECT * FROM agencies ORDER BY is_active DESC, name").all(),
       db.prepare("SELECT * FROM business_profiles ORDER BY id DESC LIMIT 1").first(),
       db.prepare("SELECT key,value_json,updated_at FROM app_settings WHERE key NOT LIKE '%api_key%'").all(),
       getOpenAIKeyStatus(),
+      getPublicDataKeyStatus("data_go_kr_service_key"),
+      getPublicDataKeyStatus("bizinfo_api_key"),
+      db.prepare("SELECT COUNT(*) total FROM opportunities").first(),
     ]);
     return Response.json({
       agencies: agencies.results,
@@ -22,9 +26,12 @@ export async function GET(request: Request) {
         openai: openaiStatus.configured,
         openaiSource: openaiStatus.source,
         openaiMasked: openaiStatus.masked,
-        dataGoKr: Boolean(getEnv().DATA_GO_KR_SERVICE_KEY),
-        bizinfo: Boolean(getEnv().BIZINFO_API_KEY),
+        dataGoKr: dataGoStatus.configured,
+        dataGoKrMasked: dataGoStatus.masked,
+        bizinfo: bizinfoStatus.configured,
+        bizinfoMasked: bizinfoStatus.masked,
       },
+      stats,
       models: [
         { id: "gpt-5.6-luna", label: "비용 절감", note: "대량 분류·빠른 요약" },
         { id: "gpt-5.6-terra", label: "가성비", note: "일상 분석 기본값" },
@@ -50,6 +57,14 @@ export async function POST(request: Request) {
         return Response.json({ error: "유효한 OpenAI API 키를 입력해 주세요." }, { status: 400 });
       }
       await saveOpenAIKey(apiKey);
+    } else if (body.type === "source_key") {
+      const name = String(body.name || "");
+      const apiKey = String(body.apiKey || "").trim();
+      if (!(["data_go_kr_service_key", "bizinfo_api_key"] as const).includes(name as "data_go_kr_service_key" | "bizinfo_api_key")) {
+        return Response.json({ error: "지원하지 않는 공공데이터 키입니다." }, { status: 400 });
+      }
+      if (apiKey.length < 8 || apiKey.length > 1024) return Response.json({ error: "서비스키를 확인해 주세요." }, { status: 400 });
+      await savePublicDataKey(name as "data_go_kr_service_key" | "bizinfo_api_key", apiKey);
     } else if (body.type === "profile") {
       await db.prepare(`
         INSERT INTO business_profiles
@@ -72,11 +87,25 @@ export async function POST(request: Request) {
         ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP
       `).bind(JSON.stringify(safe)).run();
     } else if (body.type === "agency") {
+      const name = String(body.name || "").trim().slice(0, 100);
+      if (!name) return Response.json({ error: "기관명을 입력해 주세요." }, { status: 400 });
+      const sourceType = body.sourceType === "scrape" ? "scrape" : "api";
+      const sourceConfig = sourceType === "scrape" ? validateScrapeConfig(body.sourceConfig) : (body.sourceConfig || {});
       await db.prepare(`
         INSERT INTO agencies (name,type,region_sido,homepage_url,source_type,source_config,is_active)
         VALUES (?,?,?,?,?,?,?)
-      `).bind(body.name || "", body.agencyType || "기타 공공기관", body.region || "전국",
-        body.homepageUrl || "", body.sourceType || "api", JSON.stringify(body.sourceConfig || {}), body.isActive === false ? 0 : 1).run();
+      `).bind(name, body.agencyType || "기타 공공기관", body.region || "전국",
+        sourceType === "scrape" ? sourceConfig.url : String(body.homepageUrl || "").slice(0, 500), sourceType,
+        JSON.stringify(sourceConfig), body.isActive === false ? 0 : 1).run();
+    } else if (body.type === "agency_state") {
+      const id = Number(body.id);
+      if (!Number.isInteger(id) || id <= 0) return Response.json({ error: "기관 ID가 올바르지 않습니다." }, { status: 400 });
+      await db.prepare("UPDATE agencies SET is_active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(body.isActive ? 1 : 0, id).run();
+    } else if (body.type === "agency_delete") {
+      const id = Number(body.id);
+      if (!Number.isInteger(id) || id <= 0) return Response.json({ error: "기관 ID가 올바르지 않습니다." }, { status: 400 });
+      await db.prepare("DELETE FROM agencies WHERE id=?").bind(id).run();
     } else {
       return Response.json({ error: "지원하지 않는 설정입니다." }, { status: 400 });
     }
